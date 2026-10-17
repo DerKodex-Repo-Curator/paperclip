@@ -61,6 +61,19 @@ connection of the requested purpose exists. Available access reblocks sleep so
 the existing reconciliation path can run; answering a setup card continues to
 use the normal admission and wake path.
 
+An unconfigured Slack draft can also wait for browser setup when its matching
+channel connection is disabled and still a draft. It must have no provider
+identity, prior activation/activity, or setup error. Partially configured,
+enabled, foreign, and other-provider endpoints remain blockers; accepted chat
+deliveries retain their independent checks.
+
+Cloud also reconciles missed routine issue-status hooks in bounded batches on
+awake instances. Exact company/routine/issue/run ownership and row locks are
+required. The normal routine service records completion or transient failure
+from the current issue status; a resumed issue can use its existing continuation
+rules. This repairs stale handoff bookkeeping without exempting unprocessed
+routine runs or consuming deferred comment requests.
+
 Verified signed Cloud control callers may opt into
 `GET /api/instance/task-drain?idleSleepSafety=1&scheduledWake=1&ownerId=<owner>`.
 Tenant tokens, browser instance administrators, local implicit actors, and agents

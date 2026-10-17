@@ -130,6 +130,20 @@ const WORK_CHECKS = [
   `SELECT 1 FROM environment_custom_image_setup_sessions s WHERE
     (s.status IN ('promoted', 'cancelled', 'timed_out', 'failed') AND s.finished_at IS NOT NULL
       AND s.connection_secret_ref IS NULL AND (${verifiedResourceCleanup('s', 'image_setup')})) IS NOT TRUE`,
+  // An unconfigured Slack draft has no provider identity or inbound runtime.
+  // Setup still wakes through normal browser admission. Retain every enabled,
+  // previously active, partially connected, foreign, or unsupported endpoint.
+  `SELECT 1 FROM chat_endpoints endpoint WHERE (endpoint.provider = 'slack'
+    AND endpoint.status = 'draft' AND endpoint.setup = '{"step":"provider_setup"}'::jsonb
+    AND endpoint.activated_at IS NULL AND endpoint.provider_account_id IS NULL
+    AND endpoint.bot_external_id IS NULL AND endpoint.bot_username IS NULL
+    AND endpoint.last_event_at IS NULL AND endpoint.last_publication_at IS NULL
+    AND endpoint.health_message IS NULL AND endpoint.last_error IS NULL
+    AND NOT EXISTS (SELECT 1 FROM chat_slack_registrations registration WHERE registration.endpoint_id = endpoint.id)
+    AND EXISTS (SELECT 1 FROM tool_connections draft_connection
+      WHERE draft_connection.id = endpoint.connection_id AND draft_connection.company_id = endpoint.company_id
+        AND draft_connection.connection_purpose = 'channel' AND draft_connection.transport = 'chat_sdk'
+        AND draft_connection.status = 'draft' AND draft_connection.enabled = false)) IS NOT TRUE`,
   `SELECT 1 FROM routines WHERE status NOT IN ('paused', 'archived')`,
   `SELECT 1 FROM routine_runs WHERE status NOT IN ('completed', 'failed', 'skipped', 'cancelled')`,
   `SELECT 1 FROM plugin_jobs WHERE status <> 'paused'`,
@@ -213,7 +227,7 @@ const WORK_CHECKS = [
   // These less common work sources fail closed on any retained state. Their
   // terminal-state exceptions can be added with tests for the owning service.
   ...[
-    "chat_endpoints", "chat_deliveries", "chat_publications", "chat_actions",
+    "chat_deliveries", "chat_publications", "chat_actions",
     "chat_completion_deliveries", "tool_action_requests", "tool_action_deliveries",
     "workspace_runtime_services",
     "execution_workspace_runtime_leases", "pipeline_automation_executions",

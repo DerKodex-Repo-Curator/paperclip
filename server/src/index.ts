@@ -1425,6 +1425,15 @@ async function startServerWithDatabaseTeardown(
       heartbeat.drainActiveRunExecutions();
     prepareHotRestartShutdown = heartbeat.prepareHotRestartShutdown;
     const routines = routineService(db as any, { pluginWorkerManager });
+    let nextRoutineStatusReconcile = 0;
+    const scheduleRoutineStatusReconcile = () => {
+      if (!isCloudManagedInstance() || isWarmStandby() || isIdleTaskDrainActive() || heartbeatSchedulerStopped ||
+          Date.now() < nextRoutineStatusReconcile) return;
+      nextRoutineStatusReconcile = Date.now() + 5 * 60_000;
+      trackHeartbeatSchedulerWork(routines.reconcileExecutionRunStatuses().then(result => {
+        if (result.settled > 0) logger.info(result, "reconciled routine execution issue status");
+      }).catch(() => logger.warn("routine execution status reconciliation deferred")));
+    };
     const statusCards = statusCardService(db as any);
     const issues = issueService(db as any);
     const mergedPullRequestConfirmations = issueThreadInteractionService(db as any, {
@@ -1743,6 +1752,7 @@ async function startServerWithDatabaseTeardown(
       // captures the authoritative set of running heartbeat rows.
       trackHeartbeatSchedulerWork((async () => {
         if (isIdleTaskDrainActive() || heartbeatSchedulerStopped) return;
+        scheduleRoutineStatusReconcile();
         trackHeartbeatSchedulerWork(decisionExecutor.sweepExpired().catch((err: unknown) => {
           logger.error({ err }, "decision expiry sweep failed");
         }));
