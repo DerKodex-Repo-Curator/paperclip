@@ -235,7 +235,26 @@ including token refresh after a quota response times out. Credential-recovery
 journals, partial writes and probes block sleep across restart. Empty company
 directories left after successful recovery do not; invalid paths and read
 failures remain unknown. Credentials and connection records are retained.
-MCP, chat and other connections still block until they have a wake contract.
+Disabled draft connections and saved outbound HTTP MCP connections have no
+independent listener. They can permit sleep while accepted calls and credential
+work still pass the other fences. MCP connections with a retained GitHub
+webhook binding, local stdio processes, channels, and other active transports
+remain blockers until their inbound work has a supported wake contract.
+
+With the issue-scheduling capability, pending questions, confirmations,
+checkbox confirmations and task suggestions can be passive waits. Their
+producer must have finished without retry or accounting debt. The response
+audience and continuation policy stay unchanged. Unknown pending siblings,
+foreign-company records and unfinished producers block sleep. A resolved card
+does not make an otherwise runnable issue passive. The schedule generation
+includes response identity and audience, including when only a routine owns
+the next alarm.
+
+Known board escalation actions for stranded work, missing disposition and a
+lost review path can also be passive. They require a blocked source in the same
+company, board ownership, no automatic wake, no monitor or timeout, and no live
+execution binding. The action remains visible and unresolved. Other recovery
+causes and autonomous owners remain blockers.
 
 A failed ephemeral lease is history only with successful cleanup, a release
 timestamp, and an exact provider termination receipt bound to its company, run,
@@ -243,6 +262,10 @@ lease and resource. Its run must be finished without retry or accounting debt.
 Pending cleanup claims and export/stop-and-retain intents still block. Failure
 labels or cleanup success without that proof do not authorize sleep. Lease
 history is retained; this check performs no provider teardown or data updates.
+A released local ephemeral bookkeeping lease needs no remote termination
+receipt when its exact run has finished and both its provider and environment
+are local. It must have no provider resource reference or pending cleanup,
+export or retention intent. Unknown drivers and remote resources still block.
 
 Finished login-session history permits sleep only after its promotion claim is
 cleared and any retained provider reference has a matching released, expired,
@@ -265,10 +288,19 @@ Pending deliveries, missing
 completion evidence, and unfinished handoffs still block. Failed deliveries
 without a pending target are history; other work checks still apply.
 
-Every enabled plugin blocks sleep. A version label does not prove that arbitrary
-worker code has no background activity. No plugin approval or configuration
-bypass is supported. Scheduled and externally triggered work needs a durable
-host wake mechanism before this restriction can be relaxed.
+Processed connector-event receipts with a processing timestamp are idempotency
+history. Delivered connection-intent outboxes also permit sleep once their
+exact accepted wakes finish. A system-retired connection card parked behind a
+pending response keeps its undelivered outbox intact; the normal response path
+resumes delivery. Pending event application, unfinished wakes and all other
+execution checks still block. None of these exceptions fabricates completion
+or removes a durable receipt.
+
+Enabled plugins require the current worker's verified idle drain. A version
+label does not prove that arbitrary worker code has no background activity.
+No plugin approval or configuration bypass is supported. Scheduled and
+externally triggered work needs a durable host wake mechanism before it can
+permit sleep.
 
 This is a single-process admission protocol. A restart clears the owner. The
 host must serialize sleep with deploy/wake operations and bind its final check
