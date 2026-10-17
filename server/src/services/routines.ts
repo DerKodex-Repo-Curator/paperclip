@@ -2088,6 +2088,7 @@ export function routineService(
         triggerPayload: routineRuns.triggerPayload,
       })
       .from(routineRuns)
+      .innerJoin(routines, and(eq(routines.id, routineRuns.routineId), eq(routines.companyId, issue.companyId)))
       .where(and(eq(routineRuns.id, issue.originRunId), eq(routineRuns.companyId, issue.companyId)))
       .then((rows) => rows[0] ?? null);
     if (!run) return null;
@@ -3411,7 +3412,8 @@ export function routineService(
     reconcileExecutionRunStatuses: async (): Promise<{ scanned: number; settled: number }> => {
       const candidates = await db.select({ id: routineRuns.id, companyId: routineRuns.companyId,
         issueId: issues.id, routineId: routineRuns.routineId })
-        .from(routineRuns).innerJoin(issues, and(eq(issues.id, routineRuns.linkedIssueId),
+        .from(routineRuns).innerJoin(routines, and(eq(routines.id, routineRuns.routineId), eq(routines.companyId, routineRuns.companyId)))
+        .innerJoin(issues, and(eq(issues.id, routineRuns.linkedIssueId),
           eq(issues.companyId, routineRuns.companyId), eq(issues.originKind, "routine_execution"),
           sql`${issues.originRunId} = ${routineRuns.id}::text`, sql`${issues.originId} = ${routineRuns.routineId}::text`))
         .where(and(eq(routineRuns.status, "issue_created"), inArray(issues.status, ["done", "cancelled", "blocked"]),
@@ -3423,6 +3425,9 @@ export function routineService(
         const repaired = await db.transaction(async tx => {
           await tx.execute(sql`SET LOCAL lock_timeout = '500ms'`);
           await tx.execute(sql`SET LOCAL statement_timeout = '5s'`);
+          const [routine] = await tx.select({ id: routines.id }).from(routines).where(and(
+            eq(routines.id, candidate.routineId), eq(routines.companyId, candidate.companyId))).for("share");
+          if (!routine) return false;
           const [issue] = await tx.select().from(issues).where(and(eq(issues.id, candidate.issueId),
             eq(issues.companyId, candidate.companyId), eq(issues.originKind, "routine_execution"),
             eq(issues.originRunId, candidate.id), eq(issues.originId, candidate.routineId))).for("update");

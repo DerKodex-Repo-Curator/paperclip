@@ -36,23 +36,30 @@ if (!support.supported) console.warn(`Skipping routine status database tests: ${
       expect((await db.select().from(routineRuns))[0]).toMatchObject({ status: "issue_created", completedAt: null });
     }
   });
-  it.each(["active_issue", "wrong_origin", "wrong_routine", "wrong_run", "wrong_company", "different_status"])("does not settle an unsupported handoff: %s", async mode => {
+  it.each(["active_issue", "wrong_origin", "wrong_routine", "wrong_run", "wrong_company", "wrong_routine_company", "different_status"])("does not settle an unsupported handoff: %s", async mode => {
     const f = await seed();
     if (mode === "active_issue") await db.update(issues).set({ status: "in_progress" }).where(eq(issues.id, f.issue.id));
     if (mode === "wrong_origin") await db.update(issues).set({ originKind: "manual" }).where(eq(issues.id, f.issue.id));
     if (mode === "wrong_routine") await db.update(issues).set({ originId: randomUUID() }).where(eq(issues.id, f.issue.id));
     if (mode === "wrong_run") await db.update(issues).set({ originRunId: randomUUID() }).where(eq(issues.id, f.issue.id));
     if (mode === "wrong_company") { const other = await seed("done"); await db.update(routineRuns).set({ companyId: other.companyId }).where(eq(routineRuns.id, f.run.id)); }
+    if (mode === "wrong_routine_company") { const other = await seed("done");
+      await db.update(routineRuns).set({ routineId: other.routine.id }).where(eq(routineRuns.id, f.run.id));
+      await db.update(issues).set({ originId: other.routine.id }).where(eq(issues.id, f.issue.id)); }
     if (mode === "different_status") await db.update(routineRuns).set({ status: "received" }).where(eq(routineRuns.id, f.run.id));
     const before = await db.select().from(routineRuns);
     const result = await routineService(db).reconcileExecutionRunStatuses();
-    expect(result.settled).toBe(mode === "wrong_company" ? 1 : 0);
+    expect(result.settled).toBe(["wrong_company", "wrong_routine_company"].includes(mode) ? 1 : 0);
     expect((await db.select().from(routineRuns)).find(row => row.id === f.run.id)).toEqual(before.find(row => row.id === f.run.id));
+    if (mode === "wrong_routine_company") await expect(routineService(db).syncRunStatusForIssue(f.issue.id)).resolves.toBeNull();
   });
-  it.each(["resume", "retarget"])("rechecks %s after candidate selection and before repair", async mode => {
+  it.each(["resume", "retarget", "routine_transfer"])("rechecks %s after candidate selection and before repair", async mode => {
     const f = await seed(); const transaction = db.transaction.bind(db);
     vi.spyOn(db, "transaction").mockImplementationOnce(async callback => {
-      await db.update(issues).set(mode === "resume" ? { status: "in_progress" } : { originRunId: randomUUID() }).where(eq(issues.id, f.issue.id));
+      if (mode === "routine_transfer") {
+        const otherId = randomUUID(); await db.insert(companies).values({ id: otherId, name: "Other fixture", issuePrefix: `T${otherId.slice(0, 6)}` });
+        await db.update(routines).set({ companyId: otherId }).where(eq(routines.id, f.routine.id));
+      } else await db.update(issues).set(mode === "resume" ? { status: "in_progress" } : { originRunId: randomUUID() }).where(eq(issues.id, f.issue.id));
       return transaction(callback);
     });
     expect(await routineService(db).reconcileExecutionRunStatuses()).toEqual({ scanned: 1, settled: 0 });
