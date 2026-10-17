@@ -75,6 +75,9 @@ admission hold. On an already-awake instance it keeps its existing five-second
 maintenance cadence, without creating a wake alarm. This catches newly available
 access even when its write does not notify the connection queue. Pending real
 deliveries and their downstream wake requests still block sleep.
+An owned drain pauses passive-only maintenance before it admits tracked work,
+so a slow pre-sleep backup can finish with an unchanged generation. New producer
+notifications still preempt the maintenance timer and invalidate that backup.
 
 An unconfigured Slack draft can also wait for browser setup when its matching
 channel connection is disabled and still a draft. It must have no provider

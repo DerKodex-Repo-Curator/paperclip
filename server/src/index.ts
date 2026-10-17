@@ -1329,7 +1329,7 @@ async function startServerWithDatabaseTeardown(
     retryMs: config.heartbeatSchedulerIntervalMs,
     run: () => service.sweepPending(),
     hasPending: () => service.hasPending(),
-    ...(queue === DELIVERY_QUEUES.connection ? { nextRunAt: connectionDeliveries.nextRunAt } : {}),
+    ...(queue === DELIVERY_QUEUES.connection ? { nextRunAt: connectionDeliveries.nextRunAt, pausePassiveMaintenance: true } : {}),
   }));
   // Preserve the existing task-scoped activity fast path. Claims in the
   // delivery service arbitrate with the coordinator's startup/recovery sweep.
