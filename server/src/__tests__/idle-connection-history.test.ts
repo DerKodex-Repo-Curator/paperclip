@@ -6,6 +6,7 @@ import {
   createDb, environmentLeases, environments, heartbeatRuns, issues, issueThreadInteractions, toolApplications, toolConnections,
 } from "@paperclipai/db";
 import { beginIdleTrackedWork } from "../services/task-admission.js";
+import { connectionIntentDeliveryService } from "../services/connection-intent-delivery.js";
 import { readIdleSleepSafety, type IdleSleepDrainStatus } from "../services/idle-sleep-safety.js";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 
@@ -73,8 +74,14 @@ if (!support.supported) console.warn(`Skipping connection-history database tests
     const [question] = await db.insert(issueThreadInteractions).values({ companyId: f.companyId, issueId: f.issueId, kind: "ask_user_questions", status: "pending",
       effectiveResolverPolicy: "human_only", sourceRunId: f.runId, payload: {} }).returning();
     expect(await read()).toEqual(none);
+    const worker = connectionIntentDeliveryService(db, { wakeup: async () => null });
+    expect(await worker.hasPending()).toBe(false);
+    expect(worker.nextRunAt()).toBeTypeOf("number");
+    await worker.sweepPending();
     expect(await db.select().from(connectionIntentDeliveries)).toEqual([d.outbox]);
     await db.update(issueThreadInteractions).set({ status: "answered", resolvedAt: new Date(now) }).where(eq(issueThreadInteractions.id, question!.id));
+    expect(await worker.hasPending()).toBe(true);
+    expect(worker.nextRunAt()).toBeNull();
     expect(await read()).toEqual(present);
   });
   async function connection(f: Awaited<ReturnType<typeof seed>>, change: Partial<typeof toolConnections.$inferInsert> = {}) {

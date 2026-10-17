@@ -52,12 +52,17 @@ initial version with a matching resolved-value hash establishes credential
 identity. Rotated/mutable credentials and ambient Daytona keys defer proof;
 not-found under another account cannot establish historical cleanup. Inspection
 also rejects an ambient API endpoint override when no endpoint was recorded.
+The manager permits at most two outstanding inspection RPCs across workers.
+Caller timeouts retain their slots until the actual worker reply or exit;
+timeouts cannot accumulate additional provider reads in later sweeps.
 
 Host-owned verification metadata binds the company, environment, resource,
 provider handle, optional run, and exact row version. Concurrent resume,
 replacement, cleanup, or configuration changes invalidate verification.
 Provider-supplied metadata cannot supply this marker. Inspection preserves
 failure outcomes and history and does not create a run-continuation receipt.
+Normal setup cancellation and timeout preserve the host's recorded config
+fingerprint and RPC company scope for later read-only verification.
 Retained allocations, unfinished runs/accounting/retries, export intents and
 live setup credentials continue to block sleep.
 
@@ -65,6 +70,11 @@ Pending human-only connection setup can wait asleep when no active enabled
 connection of the requested purpose exists. Available access reblocks sleep so
 the existing reconciliation path can run; answering a setup card continues to
 use the normal admission and wake path.
+The delivery worker uses the same passive-wait proof to release its local
+admission hold. On an already-awake instance it keeps its existing five-second
+maintenance cadence, without creating a wake alarm. This catches newly available
+access even when its write does not notify the connection queue. Pending real
+deliveries and their downstream wake requests still block sleep.
 
 An unconfigured Slack draft can also wait for browser setup when its matching
 channel connection is disabled and still a draft. It must have no provider
@@ -80,6 +90,8 @@ required. The normal routine service records completion or transient failure
 from the current issue status; a resumed issue can use its existing continuation
 rules. This repairs stale handoff bookkeeping without exempting unprocessed
 routine runs or consuming deferred comment requests.
+Lock contention and retryable transaction failures defer only that candidate;
+other repairs continue, and later sweeps retry the deferred row.
 
 Verified signed Cloud control callers may opt into
 `GET /api/instance/task-drain?idleSleepSafety=1&scheduledWake=1&ownerId=<owner>`.
@@ -292,6 +304,8 @@ foreign-company records and unfinished producers block sleep. A resolved card
 does not make an otherwise runnable issue passive. The schedule generation
 includes response identity and audience, including when only a routine owns
 the next alarm.
+Merge confirmations remain blockers because GitHub polling can accept them
+without a human response and does not yet have a durable wake contract.
 
 Known board escalation actions for stranded work, missing disposition and a
 lost review path can also be passive. They require a blocked source in the same

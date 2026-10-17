@@ -649,7 +649,7 @@ export function environmentCustomImageService(
       return await markSessionStatus({
         sessionId: session.id,
         status,
-        metadata: cancelled.metadata,
+        metadata: mergeSetupSessionMetadata(session.metadata, cancelled.metadata),
         failureReason: status === "failed" ? "Provider failed to cancel setup session." : null,
       });
     } catch (error) {

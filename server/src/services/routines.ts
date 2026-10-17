@@ -3409,7 +3409,7 @@ export function routineService(
     // Repair a missed issue-status hook through the same status transition as
     // normal issue writes. Never discard queued input or infer run completion
     // from age. Lock both owners and re-read the issue before applying repair.
-    reconcileExecutionRunStatuses: async (): Promise<{ scanned: number; settled: number }> => {
+    reconcileExecutionRunStatuses: async (): Promise<{ scanned: number; settled: number; deferred: number }> => {
       const candidates = await db.select({ id: routineRuns.id, companyId: routineRuns.companyId,
         issueId: issues.id, routineId: routineRuns.routineId })
         .from(routineRuns).innerJoin(routines, and(eq(routines.id, routineRuns.routineId), eq(routines.companyId, routineRuns.companyId)))
@@ -3421,26 +3421,39 @@ export function routineService(
         .orderBy(asc(routineRuns.id)).limit(50);
       statusReconcileCursor = candidates.length === 50 ? candidates.at(-1)!.id : null;
       let settled = 0;
+      let deferred = 0;
       for (const candidate of candidates) {
-        const repaired = await db.transaction(async tx => {
-          await tx.execute(sql`SET LOCAL lock_timeout = '500ms'`);
-          await tx.execute(sql`SET LOCAL statement_timeout = '5s'`);
-          const [routine] = await tx.select({ id: routines.id }).from(routines).where(and(
-            eq(routines.id, candidate.routineId), eq(routines.companyId, candidate.companyId))).for("share");
-          if (!routine) return false;
-          const [issue] = await tx.select().from(issues).where(and(eq(issues.id, candidate.issueId),
-            eq(issues.companyId, candidate.companyId), eq(issues.originKind, "routine_execution"),
-            eq(issues.originRunId, candidate.id), eq(issues.originId, candidate.routineId))).for("update");
-          if (!issue || !["done", "cancelled", "blocked"].includes(issue.status)) return false;
-          const [run] = await tx.select().from(routineRuns).where(and(eq(routineRuns.id, candidate.id),
-            eq(routineRuns.companyId, candidate.companyId), eq(routineRuns.routineId, candidate.routineId),
-            eq(routineRuns.linkedIssueId, issue.id), eq(routineRuns.status, "issue_created"))).for("update");
-          if (!run) return false;
-          return (await syncRunStatusForIssue(issue.id, tx as unknown as Db)) !== null;
-        });
-        if (repaired) settled += 1;
+        try {
+          const repaired = await db.transaction(async tx => {
+            await tx.execute(sql`SET LOCAL lock_timeout = '500ms'`);
+            await tx.execute(sql`SET LOCAL statement_timeout = '5s'`);
+            const [routine] = await tx.select({ id: routines.id }).from(routines).where(and(
+              eq(routines.id, candidate.routineId), eq(routines.companyId, candidate.companyId))).for("share");
+            if (!routine) return false;
+            const [issue] = await tx.select().from(issues).where(and(eq(issues.id, candidate.issueId),
+              eq(issues.companyId, candidate.companyId), eq(issues.originKind, "routine_execution"),
+              eq(issues.originRunId, candidate.id), eq(issues.originId, candidate.routineId))).for("update");
+            if (!issue || !["done", "cancelled", "blocked"].includes(issue.status)) return false;
+            const [run] = await tx.select().from(routineRuns).where(and(eq(routineRuns.id, candidate.id),
+              eq(routineRuns.companyId, candidate.companyId), eq(routineRuns.routineId, candidate.routineId),
+              eq(routineRuns.linkedIssueId, issue.id), eq(routineRuns.status, "issue_created"))).for("update");
+            if (!run) return false;
+            return (await syncRunStatusForIssue(issue.id, tx as unknown as Db)) !== null;
+          });
+          if (repaired) settled += 1;
+        } catch (error) {
+          let current: unknown = error;
+          let retryable = false;
+          for (let depth = 0; depth < 5 && current && typeof current === "object"; depth++) {
+            const cause = current as { code?: string; cause?: unknown };
+            if (["55P03", "57014", "40P01", "40001"].includes(cause.code ?? "")) { retryable = true; break; }
+            current = cause.cause;
+          }
+          if (!retryable) throw error;
+          deferred += 1;
+        }
       }
-      return { scanned: candidates.length, settled };
+      return { scanned: candidates.length, settled, deferred };
     },
 
     syncRunStatusForIssue,

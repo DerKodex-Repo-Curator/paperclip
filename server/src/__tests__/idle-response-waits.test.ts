@@ -7,6 +7,7 @@ import {
   toolApplications, toolConnections,
 } from "@paperclipai/db";
 import { readIdleSleepSafety, type IdleSleepDrainStatus } from "../services/idle-sleep-safety.js";
+import { getMergeConfirmationPullRequestReferences } from "../services/issue-thread-interactions.js";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 
 const now = Date.UTC(2020, 0, 1);
@@ -57,6 +58,14 @@ if (!support.supported) console.warn(`Skipping response-wait database tests: ${s
       await wait(await seed("in_progress"), { kind });
       expect(await read()).toEqual(none);
     });
+  it.each(["human_only", "anyone"])("keeps automatically polled merge confirmations awake with %s audience", async policy => {
+    const f = await seed("in_progress");
+    const card = { kind: "request_confirmation", title: "Merge PaperclipAI/paperclip#39?", summary: null,
+      payload: { version: 1, prompt: "Merge the pull request?" } };
+    expect(getMergeConfirmationPullRequestReferences(card)).toHaveLength(1);
+    await wait(f, { ...card, effectiveResolverPolicy: policy });
+    expect(await read()).toEqual(present);
+  });
   it("does not treat an assigned task or an answered interaction as a passive wait", async () => {
     const f = await seed(); expect(await read()).toEqual(present);
     const card = await wait(f); expect(await read()).toEqual(none);

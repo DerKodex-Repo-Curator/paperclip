@@ -48,6 +48,11 @@ function passiveResponse(alias: string, issue: string): string {
           WHERE response_connection.company_id = ${issue}.company_id
             AND response_connection.status = 'active' AND response_connection.enabled
             AND response_connection.connection_purpose = COALESCE(${alias}.payload->>'purpose', 'tool'))))
+    -- Merge confirmations can advance through GitHub polling, without a
+    -- response. Its recognizer requires merge intent in these four fields;
+    -- conservatively retain those cards until polling has a durable wake.
+    AND (${alias}.kind <> 'request_confirmation' OR concat_ws(' ', ${alias}.title, ${alias}.summary,
+      ${alias}.payload->>'prompt', ${alias}.payload->>'acceptLabel') !~* 'merge')
     AND ${alias}.effective_resolver_policy IN ('anyone', 'not_creator', 'human_only')
     AND ${alias}.continuation_policy IN ('wake_assignee', 'none')
     AND (${alias}.source_run_id IS NULL OR EXISTS (
@@ -61,6 +66,13 @@ export function responseDrivenIssueWait(issue: string): string {
     AND NOT EXISTS (SELECT 1 FROM issue_thread_interactions other_wait
       WHERE other_wait.issue_id = ${issue}.id AND other_wait.status = 'pending'
         AND (${passiveResponse('other_wait', issue)}) IS NOT TRUE)`;
+}
+
+export function connectionIntentWaitingForResponse(interaction: string, issue: string): string {
+  return `${interaction}.company_id = ${issue}.company_id AND ${interaction}.issue_id = ${issue}.id
+    AND ${interaction}.kind = 'connection_intent' AND ${interaction}.status = 'pending'
+    AND ${issue}.status IN ('in_progress', 'in_review') AND ${issue}.assignee_user_id IS NULL
+    AND (${responseDrivenIssueWait(issue)})`;
 }
 
 export function passiveBoardRecovery(alias: string): string {

@@ -24,12 +24,12 @@ if (!support.supported) console.warn(`Skipping routine status database tests: ${
   }
   it.each(["done", "blocked", "cancelled"])("repairs missed %s status using normal owning-service transitions", async status => {
     const f = await seed(status); const service = routineService(db);
-    expect(await service.reconcileExecutionRunStatuses()).toEqual({ scanned: 1, settled: 1 });
+    expect(await service.reconcileExecutionRunStatuses()).toEqual({ scanned: 1, settled: 1, deferred: 0 });
     const [run] = await db.select().from(routineRuns);
     expect(run!.status).toBe(status === "done" ? "completed" : "failed");
     expect(run!.completedAt).toBeInstanceOf(Date); expect(run!.triggerPayload).toMatchObject({ retainedInput: true });
     expect((await db.select().from(issues))[0]).toEqual(f.issue);
-    expect(await service.reconcileExecutionRunStatuses()).toEqual({ scanned: 0, settled: 0 });
+    expect(await service.reconcileExecutionRunStatuses()).toEqual({ scanned: 0, settled: 0, deferred: 0 });
     if (status !== "done") {
       await db.update(issues).set({ status: "in_progress" }).where(eq(issues.id, f.issue.id));
       await service.syncRunStatusForIssue(f.issue.id);
@@ -62,7 +62,26 @@ if (!support.supported) console.warn(`Skipping routine status database tests: ${
       } else await db.update(issues).set(mode === "resume" ? { status: "in_progress" } : { originRunId: randomUUID() }).where(eq(issues.id, f.issue.id));
       return transaction(callback);
     });
-    expect(await routineService(db).reconcileExecutionRunStatuses()).toEqual({ scanned: 1, settled: 0 });
+    expect(await routineService(db).reconcileExecutionRunStatuses()).toEqual({ scanned: 1, settled: 0, deferred: 0 });
     expect((await db.select().from(routineRuns))[0]).toEqual(f.run);
+  });
+  it("repairs another routine while one row is locked, then retries the deferred owner", async () => {
+    const [held, other] = [await seed(), await seed()].sort((a, b) => a.run.id.localeCompare(b.run.id));
+    let entered!: () => void, release!: () => void;
+    const locked = new Promise<void>(resolve => { entered = resolve; });
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const holding = db.transaction(async tx => {
+      await tx.select().from(routines).where(eq(routines.id, held!.routine.id)).for("update");
+      entered(); await gate;
+    });
+    try {
+      await Promise.race([locked, holding.then(() => { throw new Error("Lock transaction ended before entry"); })]);
+      const service = routineService(db);
+      expect(await service.reconcileExecutionRunStatuses()).toEqual({ scanned: 2, settled: 1, deferred: 1 });
+      expect((await db.select().from(routineRuns)).find(row => row.id === other!.run.id)?.status).toBe("failed");
+      expect((await db.select().from(routineRuns)).find(row => row.id === held!.run.id)?.status).toBe("issue_created");
+      release(); await holding;
+      expect(await service.reconcileExecutionRunStatuses()).toEqual({ scanned: 1, settled: 1, deferred: 0 });
+    } finally { release(); await holding; }
   });
 });
