@@ -38,6 +38,29 @@ report, so it counts concurrent writes without blocking on its own scan.
 
 ## Scheduled routine wake protocol
 
+Historical failed ephemeral leases and terminal custom-image setup sessions can
+become idle only after the host observes deletion of their exact provider
+resource. Cloud checks bounded batches on already-awake instances, outside the
+readiness path. The optional `environmentInspectLease` plugin RPC is read-only:
+it must never reconnect, start, stop, or destroy an allocation. Older workers
+without this method remain conservative. Daytona accepts its SDK's typed
+not-found response; authentication and transport failures are not deletion
+proof. Setup checks require the recorded provider-config fingerprint; lease
+checks use the recorded plugin and scoped config, never a replacement binding.
+
+Host-owned verification metadata binds the company, environment, resource,
+provider handle, optional run, and exact row version. Concurrent resume,
+replacement, cleanup, or configuration changes invalidate verification.
+Provider-supplied metadata cannot supply this marker. Inspection preserves
+failure outcomes and history and does not create a run-continuation receipt.
+Retained allocations, unfinished runs/accounting/retries, export intents and
+live setup credentials continue to block sleep.
+
+Pending human-only connection setup can wait asleep when no active enabled
+connection of the requested purpose exists. Available access reblocks sleep so
+the existing reconciliation path can run; answering a setup card continues to
+use the normal admission and wake path.
+
 Verified signed Cloud control callers may opt into
 `GET /api/instance/task-drain?idleSleepSafety=1&scheduledWake=1&ownerId=<owner>`.
 Tenant tokens, browser instance administrators, local implicit actors, and agents

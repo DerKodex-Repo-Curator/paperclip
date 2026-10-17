@@ -34,7 +34,20 @@ export function connectionDeliveryWaitingForResponse(delivery: string): string {
 function passiveResponse(alias: string, issue: string): string {
   return `${alias}.company_id = ${issue}.company_id
     AND ${alias}.status = 'pending' AND ${alias}.resolved_at IS NULL
-    AND ${alias}.kind IN ('ask_user_questions', 'request_confirmation', 'request_checkbox_confirmation', 'suggest_tasks')
+    AND (${alias}.kind IN ('ask_user_questions', 'request_confirmation', 'request_checkbox_confirmation', 'suggest_tasks')
+      OR (${alias}.kind = 'connection_intent' AND ${alias}.effective_resolver_policy = 'human_only'
+        AND ${alias}.addressee_user_id IS NOT NULL AND ${issue}.assignee_user_id IS NULL
+        AND ${alias}.payload->>'version' = '1'
+        AND ${alias}.payload->>'requestingAgentId' = ${issue}.assignee_agent_id::text
+        AND length(${alias}.payload->>'serviceSlug') > 0
+        AND (${alias}.payload->>'purpose' IS NULL OR ${alias}.payload->>'purpose' IN ('ai', 'channel'))
+        -- Existing access can automatically retire a setup card. In its
+        -- absence only the addressed human can finish this request. A broad
+        -- purpose match deliberately keeps unfamiliar credential paths awake.
+        AND NOT EXISTS (SELECT 1 FROM tool_connections response_connection
+          WHERE response_connection.company_id = ${issue}.company_id
+            AND response_connection.status = 'active' AND response_connection.enabled
+            AND response_connection.connection_purpose = COALESCE(${alias}.payload->>'purpose', 'tool'))))
     AND ${alias}.effective_resolver_policy IN ('anyone', 'not_creator', 'human_only')
     AND ${alias}.continuation_policy IN ('wake_assignee', 'none')
     AND (${alias}.source_run_id IS NULL OR EXISTS (

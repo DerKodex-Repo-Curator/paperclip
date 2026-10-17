@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   agents, companies, createDb, heartbeatRuns, issues, issueRecoveryActions,
   issueThreadInteractions, routines, routineTriggers,
+  toolApplications, toolConnections,
 } from "@paperclipai/db";
 import { readIdleSleepSafety, type IdleSleepDrainStatus } from "../services/idle-sleep-safety.js";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
@@ -60,6 +61,27 @@ if (!support.supported) console.warn(`Skipping response-wait database tests: ${s
     const f = await seed(); expect(await read()).toEqual(present);
     const card = await wait(f); expect(await read()).toEqual(none);
     await db.update(issueThreadInteractions).set({ status: "answered", resolvedAt: new Date(now) }).where(eq(issueThreadInteractions.id, card.id));
+    expect(await read()).toEqual(present);
+  });
+  it("allows human-only connection setup without reusable access, and reblocks when access appears", async () => {
+    const f = await seed();
+    await wait(f, { kind: "connection_intent", addresseeUserId: "fixture-user", payload: {
+      version: 1, serviceSlug: "fixture-service", requestingAgentId: f.agentId,
+    } });
+    expect(await read()).toEqual(none);
+    const [app] = await db.insert(toolApplications).values({ companyId: f.companyId,
+      type: "mcp_http", name: "Fixture service" }).returning();
+    await db.insert(toolConnections).values({ companyId: f.companyId, applicationId: app!.id,
+      uid: randomUUID(), name: "Reusable access", connectionPurpose: "tool", transport: "mcp_remote", status: "active", enabled: true });
+    expect(await read()).toEqual(present);
+  });
+  it.each(["wrong_assignee", "unknown_purpose", "no_addressee", "agent_resolver"])("retains unsafe connection wait: %s", async mode => {
+    const f = await seed();
+    await wait(f, { kind: "connection_intent", addresseeUserId: mode === "no_addressee" ? null : "fixture-user",
+      effectiveResolverPolicy: mode === "agent_resolver" ? "anyone" : "human_only", payload: {
+        version: 1, serviceSlug: "fixture-service", requestingAgentId: mode === "wrong_assignee" ? randomUUID() : f.agentId,
+        ...(mode === "unknown_purpose" ? { purpose: "future" } : {}),
+      } });
     expect(await read()).toEqual(present);
   });
   it.each([

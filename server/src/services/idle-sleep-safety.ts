@@ -5,6 +5,7 @@ import { combineIdleSchedules, readIdleIssueSchedule } from "./idle-issue-schedu
 import { connectionDeliveryWaitingForResponse, finishedIdleRun as finishedRun, finishedIdleWake, passiveBoardRecovery } from "./idle-work-proof.js";
 import type { Db } from "@paperclipai/db";
 import { sql } from "drizzle-orm";
+import { verifiedResourceCleanup } from "./cleanup-verification-proof.js";
 
 export interface IdleSleepDrainStatus {
   ownerId?: string;
@@ -43,16 +44,18 @@ function finishedFailedLease(alias: string): string {
         WHERE local_environment.id = ${alias}.environment_id AND local_environment.driver = 'local'))
     OR (${alias}.cleanup_status = 'success' AND ${alias}.provider IS NOT NULL AND ${alias}.provider <> 'local'
       AND ${alias}.provider_lease_id IS NOT NULL AND ${alias}.provider_lease_id <> ''
-      AND ${receipt}->>'schema' = 'paperclip.remote-termination.v1'
+      AND ((${receipt}->>'schema' = 'paperclip.remote-termination.v1'
       AND ${receipt}->>'companyId' = ${alias}.company_id::text
       AND ${receipt}->>'runId' = ${alias}.heartbeat_run_id::text
       AND ${receipt}->>'leaseId' = ${alias}.id::text
       AND ${receipt}->>'provider' = ${alias}.provider
       AND ${receipt}->>'providerLeaseId' = ${alias}.provider_lease_id
-      AND ${receipt}->>'state' IN ('stopped', 'destroyed')))
-    AND EXISTS (SELECT 1 FROM heartbeat_runs r WHERE r.id = ${alias}.heartbeat_run_id
+      AND ${receipt}->>'state' IN ('stopped', 'destroyed'))
+        OR (${verifiedResourceCleanup(alias, 'lease')}))))
+    AND ((${alias}.heartbeat_run_id IS NULL AND ${alias}.provider <> 'local'
+      AND (${verifiedResourceCleanup(alias, 'lease')})) OR EXISTS (SELECT 1 FROM heartbeat_runs r WHERE r.id = ${alias}.heartbeat_run_id
       AND r.company_id = ${alias}.company_id
-      AND ${finishedRun("r")})`;
+      AND ${finishedRun("r")}))`;
 }
 
 // These are deliberately conservative. Completed agent runs and workspace
@@ -124,6 +127,9 @@ const WORK_CHECKS = [
     ) IS NOT TRUE`,
   `SELECT 1 FROM environment_leases l WHERE status NOT IN ('released', 'expired')
     AND (${finishedFailedLease("l")}) IS NOT TRUE`,
+  `SELECT 1 FROM environment_custom_image_setup_sessions s WHERE
+    (s.status IN ('promoted', 'cancelled', 'timed_out', 'failed') AND s.finished_at IS NOT NULL
+      AND s.connection_secret_ref IS NULL AND (${verifiedResourceCleanup('s', 'image_setup')})) IS NOT TRUE`,
   `SELECT 1 FROM routines WHERE status NOT IN ('paused', 'archived')`,
   `SELECT 1 FROM routine_runs WHERE status NOT IN ('completed', 'failed', 'skipped', 'cancelled')`,
   `SELECT 1 FROM plugin_jobs WHERE status <> 'paused'`,
@@ -213,7 +219,7 @@ const WORK_CHECKS = [
     "execution_workspace_runtime_leases", "pipeline_automation_executions",
     "native_run_finalizations", "company_transfer_runs", "decisions", "decision_effect_executions",
     "decision_archive_notification_outbox", "browser_use_sessions", "browser_use_runs",
-    "browser_use_browsers", "environment_custom_image_setup_sessions", "feedback_exports",
+    "browser_use_browsers", "feedback_exports",
     "company_secret_proposals",
     "mcp_oauth_grants", "mcp_mutation_receipts", "mcp_event_subscriptions",
     "mcp_event_deliveries", "mcp_attachment_uploads", "dot_agent_bindings",
