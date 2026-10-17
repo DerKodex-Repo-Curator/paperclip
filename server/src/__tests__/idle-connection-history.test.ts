@@ -100,17 +100,18 @@ if (!support.supported) console.warn(`Skipping connection-history database tests
   it.each(["local_stdio", "rest_api"] as const)("retains unsupported active %s integrations", async transport => {
     await connection(await seed(), { transport }); expect(await read()).toEqual(present);
   });
-  async function slackDraft() {
+  async function slackDraft(command?: string) {
     const f = await seed(); const c = await connection(f, { connectionPurpose: "channel", transport: "chat_sdk", status: "draft", enabled: false });
     const [endpoint] = await db.insert(chatEndpoints).values({ companyId: f.companyId, connectionId: c.id,
-      assignedAgentId: f.agentId, publicId: randomUUID(), provider: "slack" }).returning();
+      assignedAgentId: f.agentId, publicId: randomUUID(), provider: "slack",
+      setup: { step: "provider_setup", ...(command ? { command } : {}) } }).returning();
     return { ...f, connection: c, endpoint: endpoint! };
   }
-  it("permits an unconfigured disabled Slack draft without losing setup state", async () => {
-    const f = await slackDraft(); expect(await read()).toEqual(none);
+  it.each([undefined, "/paperclip-fixture"])("permits an unconfigured disabled Slack draft without losing setup state (%s)", async command => {
+    const f = await slackDraft(command); expect(await read()).toEqual(none);
     expect(await db.select().from(chatEndpoints)).toEqual([f.endpoint]);
   });
-  it.each(["active", "provider_identity", "previous_activity", "connected_step", "health", "unsupported_provider", "enabled_connection", "setup_in_progress", "registration"])("retains draft integration with %s", async mode => {
+  it.each(["active", "provider_identity", "previous_activity", "connected_step", "health", "unsupported_provider", "enabled_connection", "setup_in_progress", "registration", "unknown_command_shape"])("retains draft integration with %s", async mode => {
     const f = await slackDraft();
     if (mode === "active") await db.update(chatEndpoints).set({ status: "active" }).where(eq(chatEndpoints.id, f.endpoint.id));
     if (mode === "provider_identity") await db.update(chatEndpoints).set({ botExternalId: "fixture-bot" }).where(eq(chatEndpoints.id, f.endpoint.id));
@@ -122,6 +123,7 @@ if (!support.supported) console.warn(`Skipping connection-history database tests
     if (mode === "setup_in_progress") await db.update(chatEndpoints).set({ setup: { step: "provider_setup", slackSetupMethod: "managed" } }).where(eq(chatEndpoints.id, f.endpoint.id));
     if (mode === "registration") await db.insert(chatSlackRegistrations).values({ endpointId: f.endpoint.id, companyId: f.companyId,
       requestId: randomUUID(), status: "creating", manifest: {}, manifestHash: "fixture-hash", callbackUri: "https://example.test/callback", createdByUserId: "fixture-user" });
+    if (mode === "unknown_command_shape") await db.update(chatEndpoints).set({ setup: sql`'{"step":"provider_setup","command":42}'::jsonb` }).where(eq(chatEndpoints.id, f.endpoint.id));
     expect(await read()).toEqual(present);
   });
   async function localLease() {

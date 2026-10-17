@@ -2897,6 +2897,9 @@ const plugin = definePlugin({
       return { providerLeaseId: params.providerLeaseId, state: "unknown" };
     }
     const config = parseDriverConfig(params.config);
+    if (!config.apiUrl && (process.env.DAYTONA_API_URL?.trim() || process.env.DAYTONA_SERVER_URL?.trim())) {
+      return { providerLeaseId: params.providerLeaseId, state: "unknown" };
+    }
     // Read directly from the provider. The setup-status path and cached lease
     // reconnect path can start a stopped sandbox, so neither is an observation.
     try {

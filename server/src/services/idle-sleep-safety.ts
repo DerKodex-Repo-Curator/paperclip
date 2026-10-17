@@ -134,7 +134,10 @@ const WORK_CHECKS = [
   // Setup still wakes through normal browser admission. Retain every enabled,
   // previously active, partially connected, foreign, or unsupported endpoint.
   `SELECT 1 FROM chat_endpoints endpoint WHERE (endpoint.provider = 'slack'
-    AND endpoint.status = 'draft' AND endpoint.setup = '{"step":"provider_setup"}'::jsonb
+    AND endpoint.status = 'draft' AND endpoint.setup->>'step' = 'provider_setup'
+    AND (endpoint.setup - ARRAY['step', 'command']) = '{}'::jsonb
+    AND (endpoint.setup->'command' IS NULL OR endpoint.setup->'command' = 'null'::jsonb
+      OR jsonb_typeof(endpoint.setup->'command') = 'string')
     AND endpoint.activated_at IS NULL AND endpoint.provider_account_id IS NULL
     AND endpoint.bot_external_id IS NULL AND endpoint.bot_username IS NULL
     AND endpoint.last_event_at IS NULL AND endpoint.last_publication_at IS NULL

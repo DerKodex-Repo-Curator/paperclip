@@ -50,7 +50,8 @@ checks use the recorded plugin and scoped config, never a replacement binding.
 For legacy secret references without a version manifest, only an unrotated
 initial version with a matching resolved-value hash establishes credential
 identity. Rotated/mutable credentials and ambient Daytona keys defer proof;
-not-found under another account cannot establish historical cleanup.
+not-found under another account cannot establish historical cleanup. Inspection
+also rejects an ambient API endpoint override when no endpoint was recorded.
 
 Host-owned verification metadata binds the company, environment, resource,
 provider handle, optional run, and exact row version. Concurrent resume,
@@ -70,6 +71,8 @@ channel connection is disabled and still a draft. It must have no provider
 identity, prior activation/activity, or setup error. Partially configured,
 enabled, foreign, and other-provider endpoints remain blockers; accepted chat
 deliveries retain their independent checks.
+An optional Slack slash-command name is configuration only and does not create
+background work. Other setup fields still retain their blockers.
 
 Cloud also reconciles missed routine issue-status hooks in bounded batches on
 awake instances. Exact company/routine/issue/run ownership and row locks are
