@@ -2891,6 +2891,11 @@ const plugin = definePlugin({
   async onEnvironmentInspectLease(
     params: PluginEnvironmentInspectLeaseParams,
   ): Promise<PluginEnvironmentLeaseObservation> {
+    // An environment-variable fallback may have changed accounts since this
+    // historical allocation. Inspection requires explicitly scoped credentials.
+    if (typeof params.config.apiKey !== "string" || !params.config.apiKey.trim()) {
+      return { providerLeaseId: params.providerLeaseId, state: "unknown" };
+    }
     const config = parseDriverConfig(params.config);
     // Read directly from the provider. The setup-status path and cached lease
     // reconnect path can start a stopped sandbox, so neither is an observation.

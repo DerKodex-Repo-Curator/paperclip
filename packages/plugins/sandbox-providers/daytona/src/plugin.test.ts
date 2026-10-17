@@ -57,6 +57,10 @@ describe("Daytona read-only resource inspection", () => {
     expect(await plugin.definition.onEnvironmentInspectLease!(params)).toEqual({ providerLeaseId: "sandbox-123", state: "destroyed" });
     expect(await plugin.definition.onIdleDrain!(new AbortController().signal)).toBe("none");
   });
+  it("does not use an ambient account credential to certify historical deletion", async () => {
+    expect(await plugin.definition.onEnvironmentInspectLease!({ ...params, config: {} })).toEqual({ providerLeaseId: "sandbox-123", state: "unknown" });
+    expect(mockGet).not.toHaveBeenCalled();
+  });
   it.each(["401 unauthorized", "404 proxy not found", "network unavailable"])("does not turn %s into proof", async message => {
     mockGet.mockRejectedValue(new Error(message));
     await expect(plugin.definition.onEnvironmentInspectLease!(params)).rejects.toThrow(message);

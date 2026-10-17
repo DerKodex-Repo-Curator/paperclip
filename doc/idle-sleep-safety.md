@@ -47,6 +47,10 @@ without this method remain conservative. Daytona accepts its SDK's typed
 not-found response; authentication and transport failures are not deletion
 proof. Setup checks require the recorded provider-config fingerprint; lease
 checks use the recorded plugin and scoped config, never a replacement binding.
+For legacy secret references without a version manifest, only an unrotated
+initial version with a matching resolved-value hash establishes credential
+identity. Rotated/mutable credentials and ambient Daytona keys defer proof;
+not-found under another account cannot establish historical cleanup.
 
 Host-owned verification metadata binds the company, environment, resource,
 provider handle, optional run, and exact row version. Concurrent resume,

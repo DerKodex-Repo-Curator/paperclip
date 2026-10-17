@@ -1,6 +1,7 @@
 import { allowLegacyShutdownWorkspaceCleanup, legacyShutdownWorkspaceResourceProtected } from "./legacy-shutdown-workspace-settlement.js";
 import { nativeWorkspaceExportPendingForLease } from "./native-runtime/native-workspace-finalization-state.js";
 import { beginIdleTrackedWork } from "./task-admission.js";
+import { historicalProviderCredentials } from "./historical-provider-credentials.js";
 import { hasStopOnlyCleanup, prepareSandboxStopAndRetain, readStopOnlyCleanup, settleStopOnlyCleanup, stopOnlyCleanupKey } from "./sandbox-stop-and-retain.js";
 import { JsonRpcCallError, readEnvironmentAcquisitionDiagnostic, readEnvironmentCreationCleanupError } from "@paperclipai/plugin-sdk";
 import { preserveEnvironmentSyncOutErrorDiagnostic } from "./environment-sync-out-error.js";
@@ -2623,8 +2624,10 @@ function createSandboxEnvironmentDriver(
       if (!pluginId) return undefined;
       const resolved = await resolveSandboxProviderPlugin({ provider, pluginId });
       if (resolved.state !== "running" || !pluginWorkerVerifiesLifecycleMethod(pluginId, "environmentInspectLease")) return undefined;
-      const resolvedConfig = await resolveSandboxCleanupConfigSecrets(db, lease.companyId, config,
+      const resolvedConfig = await historicalProviderCredentials(db, lease.companyId, config,
+        resolved.resolved.driver.configSchema as Record<string, unknown> | undefined,
         { issueId: lease.issueId, heartbeatRunId: lease.heartbeatRunId });
+      if (!resolvedConfig) return undefined;
       return await pluginWorkerManager.call(pluginId, "environmentInspectLease", {
         driverKey: provider, companyId: lease.companyId, environmentId: lease.environmentId,
         issueId: lease.issueId, config: stripSandboxProviderEnvelope(resolvedConfig as SandboxEnvironmentConfig),
